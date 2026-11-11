@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expense Monitor – Backup rescue</title>
+<style>
+  body{font-family:system-ui,-apple-system,sans-serif;background:#f6f5f1;color:#1d1f1e;margin:0;padding:20px;line-height:1.45}
+  .card{background:#fff;border-radius:16px;padding:18px;max-width:520px;margin:0 auto;box-shadow:0 4px 14px rgba(0,0,0,.06)}
+  h1{font-size:20px;margin:0 0 6px}
+  p{margin:6px 0 12px;color:#4a4f4c}
+  button{display:block;width:100%;padding:14px;margin:10px 0;border:0;border-radius:12px;font-size:16px;font-weight:600;background:#1f6f5c;color:#fff}
+  button.sec{background:#efede7;color:#1d1f1e}
+  #info{background:#efede7;border-radius:12px;padding:12px;font-size:15px}
+  #msg{margin-top:12px;font-size:15px;white-space:pre-wrap}
+  .ok{color:#1f8a5b}.err{color:#c2412d}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Backup rescue</h1>
+  <p>This page only <b>reads</b> your Expense Monitor data on this phone and saves a copy. It never changes or deletes anything.</p>
+  <div id="info">Reading data…</div>
+  <button id="share">1. Share backup (choose Google Drive or Gmail)</button>
+  <button id="dl" class="sec">2. Download backup file</button>
+  <button id="copy" class="sec">3. Copy backup as text</button>
+  <div id="msg"></div>
+</div>
+<script>
+'use strict';
+const KEY = 'expense-monitor-v1';
+const $ = id => document.getElementById(id);
+const say = (t, ok) => { $('msg').className = ok ? 'ok' : 'err'; $('msg').textContent = t; };
+const today = new Date().toISOString().slice(0,10);
+let raw = null;
+try { raw = localStorage.getItem(KEY); } catch(e) { raw = null; }
+
+if (!raw) {
+  $('info').textContent = 'No Expense Monitor data found in this browser. Open this page in the same browser/app where you use Expense Monitor.';
+  ['share','dl','copy'].forEach(id => $(id).disabled = true);
+} else {
+  try {
+    const d = JSON.parse(raw);
+    const dates = (d.entries || []).map(e => e.date).sort();
+    $('info').innerHTML = `Found: <b>${(d.entries||[]).length}</b> entries, <b>${(d.categories||[]).length}</b> categories, <b>${(d.recurring||[]).length}</b> recurring rules` +
+      (dates.length ? `<br>From ${dates[0]} to ${dates[dates.length-1]}` : '') +
+      `<br>Size: ${(raw.length/1024).toFixed(1)} KB`;
+  } catch(e) {
+    $('info').textContent = 'Data found (' + raw.length + ' characters) but it could not be read as JSON. The buttons still save it exactly as stored.';
+  }
+}
+
+// Text files (.txt) are accepted by the phone's share menu; .json files often are not.
+$('share').onclick = async () => {
+  const file = new File([raw], 'expense-backup-' + today + '.txt', {type: 'text/plain'});
+  try {
+    if (!navigator.canShare || !navigator.canShare({files: [file]})) { say('Sharing files is not supported here. Try button 2 or 3.'); return; }
+    await navigator.share({files: [file], title: 'Expense backup ' + today});
+    say('Shared. Check that the file arrived in Google Drive / your email.', true);
+  } catch(e) {
+    if (e.name === 'AbortError') say('Sharing was cancelled.');
+    else say('Sharing failed (' + e.name + ': ' + e.message + '). Try button 2 or 3.');
+  }
+};
+
+$('dl').onclick = () => {
+  try {
+    const url = URL.createObjectURL(new Blob([raw], {type: 'text/plain'}));
+    const a = document.createElement('a');
+    a.href = url; a.download = 'expense-backup-' + today + '.txt';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    say('Download started. Look in your Downloads folder for expense-backup-' + today + '.txt.', true);
+  } catch(e) { say('Download failed (' + e.name + ': ' + e.message + '). Try button 3.'); }
+};
+
+$('copy').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText(raw);
+    say('Copied. Paste it into an email to yourself or a Google Doc and save it.', true);
+  } catch(e) { say('Copy failed (' + e.name + ': ' + e.message + ').'); }
+};
+</script>
+</body>
+</html>
